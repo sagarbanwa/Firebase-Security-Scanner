@@ -185,6 +185,8 @@ firebase_tests/
 
 Security Researcher - Bug Bounty Edition
 
+x.com/sagarbanwa
+
 ## License
 
 MIT - Use responsibly.
