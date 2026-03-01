@@ -1,31 +1,34 @@
-# Firebase Security Scanner
+# Firebase Security Scanner v3.0
 
-A comprehensive security testing tool for Firebase projects. Designed for authorized bug bounty hunters and penetration testers.
+Comprehensive security testing tool for Firebase projects. Designed for authorized bug bounty hunters and penetration testers.
 
-## Features
+## Features (18 Security Tests)
 
-| Test | Description | Severity |
-|------|-------------|----------|
-| Open Registration | Check if anyone can create accounts | INFO |
-| Firestore READ | Enumerate accessible collections & PII | HIGH |
-| Firestore WRITE | Test unauthorized data modification | CRITICAL |
-| IDOR/BOLA | Access other users' documents | CRITICAL |
-| DELETE Access | Test data destruction capabilities | CRITICAL |
-| Config Hijack | Modify app configuration (API redirect) | CRITICAL |
-| Privilege Escalation | Self-promote to admin | HIGH |
-| Storage Bucket | List/download files | HIGH |
-| Realtime Database | Check for public RTDB access | CRITICAL |
-| CSP Headers | Missing security headers | MEDIUM |
-| API Key Restrictions | Check for unrestricted API key | LOW |
-| Cloud Functions | Discover callable endpoints | INFO |
+| # | Test | Type | Severity |
+|---|------|------|----------|
+| 1 | Open Registration | AUTH | INFO |
+| 2 | Email Enumeration | AUTH | LOW |
+| 3 | Weak Password Policy | AUTH | LOW |
+| 4 | Password Reset Abuse | AUTH | LOW |
+| 5 | JWT Token Analysis | AUTH | INFO |
+| 6 | Firestore READ | DATA_LEAK | HIGH |
+| 7 | Firestore WRITE | WRITE | CRITICAL |
+| 8 | IDOR/BOLA | IDOR | CRITICAL |
+| 9 | DELETE Access | DELETE | CRITICAL |
+| 10 | Config Hijack | CONFIG | CRITICAL |
+| 11 | Privilege Escalation | PRIVESC | HIGH |
+| 12 | Storage Bucket + Upload | STORAGE | HIGH/CRITICAL |
+| 13 | Realtime Database | RTDB | CRITICAL |
+| 14 | Sensitive Files | FILES | MEDIUM |
+| 15 | Source Maps | SOURCEMAP | MEDIUM |
+| 16 | CORS Misconfiguration | CORS | MEDIUM/HIGH |
+| 17 | Security Headers (CSP) | HEADERS | MEDIUM |
+| 18 | Remote Config | REMOTECONFIG | HIGH |
 
 ## Installation
 
 ```bash
-# Clone or download
 cd firebase_tests
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -35,111 +38,148 @@ pip install -r requirements.txt
 python3 firebase_scanner.py
 ```
 
-### Input Required
-
-You'll need the Firebase config from the target application (usually found in source code):
+### Input
 
 ```
 API Key: AIzaSy...
-Project ID: project-name-12345
-Storage Bucket: (optional - auto-detected)
-App URL: https://app.example.com (optional - for CSP test)
+Project ID: project-12345
+Storage Bucket: (Enter to auto-detect)
+App URL: https://app.example.com (optional)
 ```
 
 ### Finding Firebase Config
 
-Look in the target's source code for:
+Look in target's source code:
 
 ```javascript
 const firebaseConfig = {
-  apiKey: "AIzaSy...",
-  authDomain: "project.firebaseapp.com",
-  projectId: "project-12345",
-  storageBucket: "project.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123:web:abc123"
+  apiKey: "AIzaSy...",           // Required
+  projectId: "project-12345",    // Required
+  storageBucket: "...",          // Optional
+  authDomain: "...",             // Optional
 };
 ```
 
+Or check:
+- View Source (`Ctrl+U`)
+- DevTools > Sources > main.js
+- `/__/firebase/init.json` endpoint
+
 ## Output
 
-The scanner provides:
-
-1. **Color-coded findings** - CRITICAL (red), HIGH (yellow), MEDIUM (blue)
-2. **Ready-to-use curl commands** - Copy-paste PoC for each vulnerability
-3. **Bug bounty report template** - Pre-formatted report for submission
-4. **Remediation guidance** - Firestore security rules examples
+1. **Color-coded findings** by severity
+2. **Ready-to-use curl commands** for PoC
+3. **Bug bounty report template**
+4. **Remediation guidance**
 
 ## Example Output
 
 ```
-[CRITICAL] IDOR: IDOR/BOLA - Access Other Users
-           Can read/modify 15 other users' documents without authorization
-           Impact: Full account takeover, mass data breach, privacy violation
+╔══════════════════════════════════════════════════════════════════════╗
+║                    Firebase Security Scanner v3.0                     ║
+╚══════════════════════════════════════════════════════════════════════╝
 
-[HIGH] DATA_LEAK: Firestore Data Exposure
-       3 collections readable with 47 total documents. PII detected: ['email', 'phone']
-       Impact: Mass data exposure, potential GDPR violation
+[1/18] Testing Open Registration...
+    [VULN] Open registration ENABLED!
+
+[6/18] Testing Firestore READ Access (Data Leak)...
+    [VULN] 'users' READABLE - 47 documents
+    [VULN] 'app_config' READABLE - 1 documents
+
+[8/18] Testing IDOR/BOLA (Access Other Users)...
+    [CRITICAL] IDOR! Can access 46 OTHER users!
+    [CRITICAL] Can MODIFY other users!
+
+===========================================================================
+                           SCAN RESULTS
+===========================================================================
+
+CRITICAL: 4  HIGH: 2  MEDIUM: 1  LOW: 2
+
+[CRITICAL] IDOR: IDOR/BOLA - Access Other Users
+       Can access 46 other users' data
+       Impact: Account takeover, mass data breach
 ```
 
-## Supported Vulnerability Categories (VRT)
+## Vulnerability Categories
 
-- **Broken Access Control (BAC)** > Insecure Direct Object References (IDOR)
-- **Server Security Misconfiguration** > Insecure Firebase Configuration
-- **Server Security Misconfiguration** > Missing Content Security Policy
+### Critical
+- **IDOR/BOLA** - Access other users' data
+- **Firestore Write** - Modify any document
+- **Delete Access** - Destroy data
+- **Config Hijack** - Redirect API traffic
+- **RTDB Exposed** - Full database public
+- **Storage Upload** - Upload malicious files
+
+### High
+- **Data Leak** - Read sensitive collections
+- **Privilege Escalation** - Self-promote to admin
+- **Storage Exposure** - List/download files
+- **CORS Reflection** - Origin bypass
+
+### Medium
+- **Missing CSP** - XSS risk
+- **Source Maps** - Code exposure
+- **Sensitive Files** - .env, .git exposed
+
+### Low
+- **Email Enumeration** - Discover valid emails
+- **Weak Passwords** - No complexity requirements
 
 ## Legal Disclaimer
 
-This tool is intended for **authorized security testing only**.
+**For authorized testing only.**
 
-- Only test applications you have permission to test
+- Only test applications you have explicit permission to test
 - Follow responsible disclosure practices
 - Comply with bug bounty program rules
 - Do not use for malicious purposes
 
-The author is not responsible for misuse of this tool.
-
 ## Bug Bounty Tips
 
-### What Makes a Good Firebase Report
+### What Makes a Good Report
 
-1. **Prove real impact** - Show actual data, not just "I can access X"
-2. **Include PII if found** - Redacted emails, phone numbers prove severity
-3. **Provide clear reproduction steps** - Token generation, curl commands
-4. **Document everything** - Screenshots, response bodies
+1. **Prove impact** - Show real data, not just access
+2. **Include PII** - Redacted emails/phones prove severity
+3. **Clear reproduction** - Token generation + curl commands
+4. **Screenshots** - Response bodies, data samples
 
 ### Common Mistakes
 
-- Reporting exposed API keys alone (they're meant to be public)
-- Not demonstrating actual impact
+- Reporting API keys alone (they're meant to be public)
+- Not demonstrating real impact
 - Missing reproduction steps
-- Submitting duplicates (different symptoms, same root cause)
+- Submitting duplicates (same root cause)
 
-### Report Template
+### VRT Categories
 
-```markdown
-## Title
-[Vulnerability Type] in Firebase Project [project-id]
+- Broken Access Control > IDOR
+- Server Misconfiguration > Insecure Firebase
+- Server Misconfiguration > Missing CSP
 
-## Severity
-[CRITICAL/HIGH/MEDIUM]
+## Files
 
-## Summary
-Brief description of the vulnerability and its impact.
-
-## Steps to Reproduce
-1. Register account via Firebase Auth API
-2. Use token to access Firestore REST API
-3. [Specific curl commands]
-
-## Impact
-- What an attacker can do
-- What data is exposed
-- Business impact
-
-## Remediation
-Firestore security rules fix.
 ```
+firebase_tests/
+├── firebase_scanner.py   # Main scanner (18 tests)
+├── requirements.txt      # Dependencies
+└── README.md             # This file
+```
+
+## Changelog
+
+### v3.0
+- Added 18 comprehensive security tests
+- JWT token analysis
+- Email enumeration
+- Password policy testing
+- Source map detection
+- CORS testing
+- Storage upload testing
+- Remote config testing
+- Sensitive file discovery
+- Color-coded output
+- Auto-generated report template
 
 ## Author
 
@@ -147,4 +187,4 @@ Security Researcher - Bug Bounty Edition
 
 ## License
 
-MIT License - Use responsibly.
+MIT - Use responsibly.
