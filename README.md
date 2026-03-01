@@ -145,6 +145,8 @@ Firestore security rules fix.
 
 Security Researcher - Bug Bounty Edition
 
+x.com/sagarbanwa
+
 ## License
 
 MIT License - Use responsibly.
