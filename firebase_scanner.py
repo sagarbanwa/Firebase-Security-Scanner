@@ -45,6 +45,12 @@ class FirebaseScanner:
         """)
 
     def get_config(self):
+        # Allow pre-filled config for automated runs
+        if self.api_key and self.project_id:
+            if not self.storage_bucket:
+                self.storage_bucket = f"{self.project_id}.appspot.com"
+            return
+
         print(f"{Colors.INFO}[*] Enter Firebase Configuration{Colors.RESET}\n")
         print("    (Paste from source code - only API Key & Project ID required)\n")
 
@@ -252,9 +258,77 @@ curl -X POST "{url}" \\
         except Exception as e:
             self.log("INFO", f"JWT decode error: {e}")
 
-    # ==================== TEST 6: FIRESTORE READ (DATA LEAK) ====================
+    # ==================== TEST 6: COLLECTION ENUMERATION ====================
+    def test_collection_enum(self):
+        print(f"\n{Colors.INFO}[6/19] Enumerating Firestore Collections...{Colors.RESET}")
+
+        if not self.token:
+            self.log("SKIP", "No token")
+            return []
+
+        headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
+        url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents:listCollectionIds"
+
+        discovered_collections = []
+
+        try:
+            r = requests.post(url, headers=headers, json={}, timeout=10)
+            if r.status_code == 200:
+                collections = r.json().get("collectionIds", [])
+                if collections:
+                    self.log("VULN", f"Found {len(collections)} collections via API!")
+                    for coll in collections:
+                        self.log("FOUND", f"  - {coll}")
+                        discovered_collections.append(coll)
+
+                    curl = f'''# Enumerate all collections
+curl -X POST "https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents:listCollectionIds" \\
+  -H "Authorization: Bearer $TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{{}}'
+'''
+                    self.add_finding("HIGH", "ENUM", "Collection Enumeration",
+                        f"Discovered {len(collections)} collections: {collections}",
+                        curl, "Database structure exposure, attack surface mapping")
+
+                    # Try to find subcollections in users
+                    self.test_subcollection_enum(headers, discovered_collections)
+                else:
+                    self.log("OK", "No collections returned (may still exist)")
+            else:
+                self.log("INFO", f"listCollectionIds blocked ({r.status_code})")
+        except Exception as e:
+            self.log("INFO", f"Error: {e}")
+
+        return discovered_collections
+
+    def test_subcollection_enum(self, headers, collections):
+        """Try to enumerate subcollections within documents"""
+        print(f"    {Colors.INFO}[+] Checking for subcollections...{Colors.RESET}")
+
+        for coll in collections[:5]:  # Check first 5 collections
+            # Get first document in collection
+            url = f"https://firestore.googleapis.com/v1/projects/{self.project_id}/databases/(default)/documents/{coll}?pageSize=1"
+            try:
+                r = requests.get(url, headers=headers, timeout=5)
+                if r.status_code == 200:
+                    docs = r.json().get("documents", [])
+                    if docs:
+                        doc_path = docs[0].get("name", "")
+                        if doc_path:
+                            # Try to list subcollections
+                            sub_url = f"https://firestore.googleapis.com/v1/{doc_path}:listCollectionIds"
+                            r2 = requests.post(sub_url, headers=headers, json={}, timeout=5)
+                            if r2.status_code == 200:
+                                subcols = r2.json().get("collectionIds", [])
+                                if subcols:
+                                    self.log("FOUND", f"  Subcollections in {coll}: {subcols}")
+            except:
+                pass
+
+    # ==================== TEST 7: FIRESTORE READ (DATA LEAK) ====================
     def test_firestore_read(self):
-        print(f"\n{Colors.INFO}[6/18] Testing Firestore READ Access (Data Leak)...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[7/19] Testing Firestore READ Access (Data Leak)...{Colors.RESET}")
 
         if not self.token:
             self.log("SKIP", "No token")
@@ -307,9 +381,9 @@ curl -X GET "https://firestore.googleapis.com/v1/projects/{self.project_id}/data
         else:
             self.log("OK", "No collections accessible")
 
-    # ==================== TEST 7: FIRESTORE WRITE ====================
+    # ==================== TEST 8: FIRESTORE WRITE ====================
     def test_firestore_write(self):
-        print(f"\n{Colors.INFO}[7/18] Testing Firestore WRITE Access...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[8/19] Testing Firestore WRITE Access...{Colors.RESET}")
 
         if not self.token:
             self.log("SKIP", "No token")
@@ -345,9 +419,9 @@ curl -X PATCH "https://firestore.googleapis.com/v1/projects/{self.project_id}/da
                 f"Writable collections: {writable}",
                 curl, "Data manipulation, account takeover")
 
-    # ==================== TEST 8: IDOR/BOLA ====================
+    # ==================== TEST 9: IDOR/BOLA ====================
     def test_idor(self):
-        print(f"\n{Colors.INFO}[8/18] Testing IDOR/BOLA (Access Other Users)...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[9/19] Testing IDOR/BOLA (Access Other Users)...{Colors.RESET}")
 
         if not self.token:
             self.log("SKIP", "No token")
@@ -389,9 +463,9 @@ curl -X PATCH "https://firestore.googleapis.com/v1/projects/{self.project_id}/da
         except Exception as e:
             self.log("INFO", f"Error: {e}")
 
-    # ==================== TEST 9: DELETE ====================
+    # ==================== TEST 10: DELETE ====================
     def test_delete(self):
-        print(f"\n{Colors.INFO}[9/18] Testing DELETE Access...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[10/19] Testing DELETE Access...{Colors.RESET}")
 
         if not self.token:
             self.log("SKIP", "No token")
@@ -421,9 +495,9 @@ curl -X DELETE "https://firestore.googleapis.com/v1/projects/{self.project_id}/d
         except:
             pass
 
-    # ==================== TEST 10: CONFIG HIJACK ====================
+    # ==================== TEST 11: CONFIG HIJACK ====================
     def test_config_hijack(self):
-        print(f"\n{Colors.INFO}[10/18] Testing Config Hijack...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[11/19] Testing Config Hijack...{Colors.RESET}")
 
         if not self.token:
             self.log("SKIP", "No token")
@@ -466,9 +540,9 @@ curl -X PATCH "https://firestore.googleapis.com/v1/projects/{self.project_id}/da
             except:
                 pass
 
-    # ==================== TEST 11: PRIVILEGE ESCALATION ====================
+    # ==================== TEST 12: PRIVILEGE ESCALATION ====================
     def test_privesc(self):
-        print(f"\n{Colors.INFO}[11/18] Testing Privilege Escalation...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[12/19] Testing Privilege Escalation...{Colors.RESET}")
 
         if not self.token or not self.user_uid:
             self.log("SKIP", "No token/UID")
@@ -494,9 +568,9 @@ curl -X PATCH "https://firestore.googleapis.com/v1/projects/{self.project_id}/da
         except:
             pass
 
-    # ==================== TEST 12: STORAGE ====================
+    # ==================== TEST 13: STORAGE ====================
     def test_storage(self):
-        print(f"\n{Colors.INFO}[12/18] Testing Firebase Storage...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[13/19] Testing Firebase Storage...{Colors.RESET}")
 
         url = f"https://firebasestorage.googleapis.com/v0/b/{self.storage_bucket}/o"
 
@@ -550,9 +624,9 @@ curl "https://firebasestorage.googleapis.com/v0/b/{self.storage_bucket}/o/path%2
         except:
             pass
 
-    # ==================== TEST 13: REALTIME DATABASE ====================
+    # ==================== TEST 14: REALTIME DATABASE ====================
     def test_rtdb(self):
-        print(f"\n{Colors.INFO}[13/18] Testing Realtime Database...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[14/19] Testing Realtime Database...{Colors.RESET}")
 
         urls = [
             f"https://{self.project_id}.firebaseio.com/.json",
@@ -576,9 +650,9 @@ curl "{url}"
             except:
                 pass
 
-    # ==================== TEST 14: SENSITIVE FILES (HOSTING) ====================
+    # ==================== TEST 15: SENSITIVE FILES (HOSTING) ====================
     def test_sensitive_files(self):
-        print(f"\n{Colors.INFO}[14/18] Testing Sensitive File Exposure...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[15/19] Testing Sensitive File Exposure...{Colors.RESET}")
 
         if not self.app_url:
             # Try default hosting URL
@@ -627,9 +701,9 @@ curl "{base}/.git/config"
                 f"Accessible files: {found}",
                 curl, "Config leak, source code exposure")
 
-    # ==================== TEST 15: SOURCE MAPS ====================
+    # ==================== TEST 16: SOURCE MAPS ====================
     def test_source_maps(self):
-        print(f"\n{Colors.INFO}[15/18] Testing Source Map Exposure...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[16/19] Testing Source Map Exposure...{Colors.RESET}")
 
         if not self.app_url:
             self.log("SKIP", "No app URL")
@@ -659,9 +733,9 @@ curl "{base}/.git/config"
 
         self.log("OK", "No source maps found")
 
-    # ==================== TEST 16: CORS ====================
+    # ==================== TEST 17: CORS ====================
     def test_cors(self):
-        print(f"\n{Colors.INFO}[16/18] Testing CORS Configuration...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[17/19] Testing CORS Configuration...{Colors.RESET}")
 
         if not self.app_url:
             self.log("SKIP", "No app URL")
@@ -687,9 +761,9 @@ curl "{base}/.git/config"
         except Exception as e:
             self.log("INFO", f"Error: {e}")
 
-    # ==================== TEST 17: SECURITY HEADERS ====================
+    # ==================== TEST 18: SECURITY HEADERS ====================
     def test_security_headers(self):
-        print(f"\n{Colors.INFO}[17/18] Testing Security Headers...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[18/19] Testing Security Headers...{Colors.RESET}")
 
         if not self.app_url:
             self.log("SKIP", "No app URL")
@@ -723,9 +797,9 @@ curl "{base}/.git/config"
         except Exception as e:
             self.log("INFO", f"Error: {e}")
 
-    # ==================== TEST 18: FIREBASE REMOTE CONFIG ====================
+    # ==================== TEST 19: FIREBASE REMOTE CONFIG ====================
     def test_remote_config(self):
-        print(f"\n{Colors.INFO}[18/18] Testing Firebase Remote Config...{Colors.RESET}")
+        print(f"\n{Colors.INFO}[19/19] Testing Firebase Remote Config...{Colors.RESET}")
 
         url = f"https://firebaseremoteconfig.googleapis.com/v1/projects/{self.project_id}/remoteConfig"
 
@@ -852,6 +926,7 @@ service cloud.firestore {{
         self.test_weak_password()
         self.test_password_reset()
         self.test_jwt_analysis()
+        self.test_collection_enum()
         self.test_firestore_read()
         self.test_firestore_write()
         self.test_idor()
